@@ -1,0 +1,604 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Benutzer-Modell
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  firstName String
+  lastName  String
+  password  String
+  image     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Email-Verifizierung
+  emailVerified                   Boolean   @default(false)
+  emailVerificationToken          String?   @unique
+  emailVerificationTokenCreatedAt DateTime?
+  emailVerifiedAt                 DateTime?
+
+  // Passwort zurücksetzen
+  passwordResetToken              String?   @unique
+  passwordResetTokenExpires       DateTime?
+
+  // Identitäts-Verifizierung (Stripe Identity)
+  identityVerified        Boolean   @default(false)
+  identityVerifiedAt      DateTime?
+  stripeIdentitySessionId String?
+
+  // Rollen & Permissions
+  role       UserRole @default(USER)
+  position   String?  // Optionale Team-Position (z. B. cto, head-of-support) aus team-structure
+  supportPin String?  @unique // 6-stelliger PIN für Team-Login
+  isActive   Boolean  @default(true)
+
+  // Zwei-Faktor-Authentifizierung
+  twoFactorEnabled     Boolean   @default(false)
+  twoFactorBackupCodes String[]  @default([])
+  twoFactorSecret      String?
+
+  // Credits/Guthaben
+  credits Float @default(0.00) // Guthaben in Euro
+
+  // Pterodactyl Integration
+  pterodactylUserId String? @unique // Pterodactyl User ID
+
+  // Discord / TitanNode Bot (Boost-Gutschrift)
+  discordUserId String? @unique // Discord User ID für Boost-API
+
+  // Relationen
+  servers         Server[]
+  orders          Order[]
+  invoices        Invoice[]
+  tickets         Ticket[]
+  sessions        Session[]
+  accounts        Account[]
+  loginActivities LoginActivity[]
+  chatSessions    ChatSession[]
+  serverActivities ServerActivity[]
+  careerApplications CareerApplication[]
+  createdAnnouncements Announcement[]
+
+  @@index([role])
+
+  @@map("users")
+}
+
+enum UserRole {
+  USER // Normaler Kunde
+  SALES_TEAM // Verkaufsteam
+  SUPPORT_TEAM // Support-Team
+  TECHNICIAN // Techniker
+  MANAGEMENT // Management
+  FOUNDER // Gründer
+}
+
+// Node für Gameserver-Hosting
+model Node {
+  id       String @id @default(cuid())
+  name     String
+  hostname String
+  ip       String
+  port     Int    @default(22)
+  username String @default("root")
+  location String // z.B. "Frankfurt, DE"
+
+  // Specs
+  totalCpu  Int // Total vCores
+  totalRam  Int // Total RAM in GB
+  totalDisk Int // Total Disk in GB
+
+  // Status
+  status   NodeStatus @default(OFFLINE)
+  isActive Boolean    @default(true)
+
+  // Auslastung (wird vom System aktualisiert)
+  usedCpu  Int @default(0)
+  usedRam  Int @default(0)
+  usedDisk Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationen
+  servers Server[]
+
+  @@map("nodes")
+}
+
+enum NodeStatus {
+  ONLINE
+  OFFLINE
+  MAINTENANCE
+}
+
+// System Status für Status-Page
+model SystemService {
+  id           String        @id @default(cuid())
+  name         String        @unique
+  slug         String        @unique
+  description  String?
+  status       ServiceStatus @default(OPERATIONAL)
+  category     String // vps, gameserver, apps, infrastructure
+  displayOrder Int           @default(0)
+
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationen
+  metrics   ServiceMetric[]
+  incidents StatusIncident[]
+
+  @@map("system_services")
+}
+
+enum ServiceStatus {
+  OPERATIONAL
+  DEGRADED
+  PARTIAL_OUTAGE
+  MAJOR_OUTAGE
+  MAINTENANCE
+}
+
+// Service Metriken (Uptime, Response Time, etc.)
+model ServiceMetric {
+  id        String        @id @default(cuid())
+  serviceId String
+  service   SystemService @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+
+  uptime       Float // Prozent
+  responseTime Int // in ms
+  date         DateTime @default(now())
+
+  createdAt DateTime @default(now())
+
+  @@index([serviceId, date])
+  @@map("service_metrics")
+}
+
+// Status-Incidents und Wartungen
+model StatusIncident {
+  id          String           @id @default(cuid())
+  title       String
+  description String           @db.Text
+  status      IncidentStatus   @default(INVESTIGATING)
+  severity    IncidentSeverity @default(MINOR)
+
+  startedAt  DateTime  @default(now())
+  resolvedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Betroffene Services
+  affectedServices SystemService[]
+
+  // Updates
+  updates IncidentUpdate[]
+
+  @@map("status_incidents")
+}
+
+enum IncidentStatus {
+  INVESTIGATING
+  IDENTIFIED
+  MONITORING
+  RESOLVED
+  SCHEDULED // Für geplante Wartungen
+  IN_PROGRESS // Wartung läuft
+  COMPLETED // Wartung abgeschlossen
+}
+
+enum IncidentSeverity {
+  MAINTENANCE
+  MINOR
+  MAJOR
+  CRITICAL
+}
+
+// Incident Updates
+model IncidentUpdate {
+  id         String         @id @default(cuid())
+  incidentId String
+  incident   StatusIncident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
+  message String         @db.Text
+  status  IncidentStatus
+
+  createdAt DateTime @default(now())
+
+  @@map("incident_updates")
+}
+
+// Account-Modell für OAuth (Google, GitHub, etc.)
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+// Session-Modell
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // optional: wer diese Session per Impersonation erzeugt hat
+  createdByImpersonationUserId String?
+
+  @@index([userId])
+
+  @@map("sessions")
+}
+
+// Server-Modell (VPS, Gameserver, App Hosting)
+model Server {
+  id     String       @id @default(cuid())
+  name   String
+  type   ServerType
+  status ServerStatus @default(PENDING)
+
+  // Specs
+  cpu       Int // vCores
+  ram       Int // in GB
+  storage   Int // in GB
+  bandwidth Int // in Gbit/s
+
+  // Game-specific
+  game  String? // z.B. "minecraft", "csgo", "ark"
+  slots Int? // Spieler-Slots
+
+  // Preise
+  priceMonthly Float
+
+  // Technische Details
+  ipAddress String?
+  port      Int?
+
+  // Datalix Integration
+  datalixVpsId String? // Datalix VPS ID für Synchronisation
+
+  // Pterodactyl Integration
+  pterodactylServerId String? // Pterodactyl Server ID für App Hosting
+
+  // App Hosting Details
+  eggId Int? // Pterodactyl Egg ID (15=Node.JS, 16=Python, 19=Uptime Kuma, 20=Java)
+
+  // Zeitstempel
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  expiresAt DateTime?
+
+  // Relationen
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  nodeId  String?
+  node    Node?    @relation(fields: [nodeId], references: [id])
+  orderId String?
+  order   Order?   @relation(fields: [orderId], references: [id])
+  tickets Ticket[] // Tickets für diesen Server
+  activities ServerActivity[] // Activity-Logs für diesen Server
+
+  @@index([status])
+  @@index([userId])
+
+  @@map("servers")
+}
+
+enum ServerType {
+  VPS
+  GAMESERVER
+  APP_HOSTING
+}
+
+enum ServerStatus {
+  PENDING
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
+// Bestellungen
+model Order {
+  id            String        @id @default(cuid())
+  orderNumber   String        @unique
+  status        OrderStatus   @default(PENDING)
+  total         Float
+  paymentMethod String?
+  paymentStatus PaymentStatus @default(PENDING)
+  metadata      String?       @db.Text // JSON-String mit Bestelldetails (z.B. Server-Konfiguration)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationen
+  userId   String
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  servers  Server[]
+  invoices Invoice[]
+
+  @@map("orders")
+}
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+// Rechnungen
+model Invoice {
+  id            String        @id @default(cuid())
+  invoiceNumber String        @unique
+  amount        Float
+  status        InvoiceStatus @default(UNPAID)
+  dueDate       DateTime
+  paidAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationen
+  userId  String
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id])
+
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  UNPAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+// Support-Tickets
+model Ticket {
+  id          String       @id @default(cuid())
+  subject     String
+  description String       @db.Text
+  status      TicketStatus @default(OPEN)
+  priority    Priority     @default(MEDIUM)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  closedAt  DateTime?
+
+  // Relationen
+  userId   String
+  user     User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages TicketMessage[]
+
+  // Zugehöriger Service (optional)
+  serverId String?
+  server   Server? @relation(fields: [serverId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+
+  @@map("tickets")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  WAITING_FOR_CUSTOMER
+  CLOSED
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// Ticket-Nachrichten
+model TicketMessage {
+  id      String  @id @default(cuid())
+  message String  @db.Text
+  isStaff Boolean @default(false)
+
+  createdAt DateTime @default(now())
+
+  // Relationen
+  ticketId String
+  ticket   Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@map("ticket_messages")
+}
+
+// Live-Chat Sessions
+model ChatSession {
+  id           String           @id @default(cuid())
+  sessionToken String?          @unique
+  pageContext  String
+  status       ChatSessionStatus @default(OPEN)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relationen
+  userId   String?
+  user     User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  messages ChatMessage[]
+
+  @@map("chat_sessions")
+}
+
+// Live-Chat Nachrichten
+model ChatMessage {
+  id         String      @id @default(cuid())
+  content    String      @db.Text
+  sender     ChatSender  @default(USER)
+  createdAt  DateTime    @default(now())
+  readAt     DateTime?
+
+  // Relationen
+  sessionId String
+  session   ChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, createdAt])
+  @@map("chat_messages")
+}
+
+enum ChatSender {
+  USER
+  STAFF
+  SYSTEM
+}
+
+enum ChatSessionStatus {
+  OPEN
+  CLOSED
+}
+
+// Login-Aktivitäten
+model LoginActivity {
+  id        String   @id @default(cuid())
+  userId    String
+  ipAddress String
+  userAgent String?
+  status    String   @default("success") // success, failed
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("login_activities")
+}
+
+// Server-Aktivitäten (Activity-Logs für Server-Aktionen)
+model ServerActivity {
+  id        String   @id @default(cuid())
+  serverId  String
+  userId    String
+  action    String   // z.B. "start", "stop", "restart", "delete", "sync", "rename", etc.
+  ipAddress String
+  details   String?  @db.Text // Zusätzliche Details zur Aktion
+  createdAt DateTime @default(now())
+
+  // Relationen
+  server Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([serverId, createdAt])
+  @@index([userId, createdAt])
+  @@map("server_activities")
+}
+
+// Ankündigungen/Announcements
+model Announcement {
+  id          String           @id @default(cuid())
+  title       String
+  description String           @db.Text
+  type        AnnouncementType @default(INFO)
+  icon        String? // Emoji oder Icon-Name
+  isPublished Boolean          @default(true)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  createdById String?          // User, der die Ankündigung erstellt hat (nur in DB, nicht auf der Seite anzeigen)
+  createdBy   User?            @relation(fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([isPublished, createdAt])
+  @@index([createdById])
+  @@map("announcements")
+}
+
+enum AnnouncementType {
+  INFO
+  SUCCESS
+  WARNING
+  ERROR
+}
+
+// Karriere-Bewerbungen
+model CareerApplication {
+  id        String   @id @default(cuid())
+  jobSlug   String   // z.B. "support-engineer"
+  jobTitle  String   // Stellenbezeichnung zum Zeitpunkt der Bewerbung
+  firstName String
+  lastName  String
+  email     String
+  phone     String?
+  message   String?  @db.Text
+  answers   Json     @default("{}") // Bereichsspezifische Antworten { questionId: value }
+  userId    String?  // Optional: eingeloggter User
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([jobSlug])
+  @@index([createdAt])
+  @@map("career_applications")
+}
+
+// Checkout-Einstellungen
+model CheckoutSettings {
+  id      String  @id @default(cuid())
+  enabled Boolean @default(true) // Hauptaktivierung
+
+  // Checkout Events
+  buyerApproved  Boolean @default(false)
+  orderApproved  Boolean @default(false)
+  orderCompleted Boolean @default(true)
+  orderDeclined  Boolean @default(false)
+  orderSaved     Boolean @default(false)
+  orderVoided    Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("checkout_settings")
+}
+
+// Site-Banner (ein Eintrag, oben auf jeder Seite)
+model SiteBanner {
+  id        String   @id @default(cuid())
+  enabled   Boolean  @default(true)
+  text      String
+  linkUrl   String?
+  icon      String?  // Iconify-Icon z. B. tabler:discount-2
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("site_banner")
+}

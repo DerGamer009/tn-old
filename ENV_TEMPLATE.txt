@@ -1,0 +1,58 @@
+# Database
+DATABASE_URL="postgresql://user:password@localhost:5432/titannode"
+
+# Email Configuration
+SMTP_HOST="smtp.ethereal.email"
+SMTP_PORT="587"
+SMTP_USER="your-email@ethereal.email"
+SMTP_PASS="your-password"
+SMTP_FROM="TitanNode <noreply@titannode.com>"
+
+# Public URL
+PUBLIC_BASE_URL="http://localhost:5173"
+
+# Stripe
+STRIPE_SECRET_KEY="sk_test_..."
+STRIPE_PUBLISHABLE_KEY="pk_test_..."
+STRIPE_WEBHOOK_SECRET="whsec_..."
+
+# PayPal
+PAYPAL_CLIENT_ID="your-paypal-client-id"
+PAYPAL_CLIENT_SECRET="your-paypal-client-secret"
+PAYPAL_MODE="sandbox"  # sandbox oder live
+PUBLIC_APP_URL="http://localhost:5173"  # Für Return URLs
+
+# Klarna
+KLARNA_USERNAME="your-klarna-username"
+KLARNA_PASSWORD="your-klarna-password"
+KLARNA_MODE="test"  # test oder live
+
+# Datalix API
+DATALIX_API_BASE="https://backend.datalix.de/v1"
+# Option 1: API-Key (wird als Query-Parameter `token` verwendet)
+DATALIX_API_KEY="your-datalix-api-key"
+# Option 2: Username/Password (wird als Query-Parameter `token` verwendet, nach Login)
+DATALIX_USERNAME="your-username"
+DATALIX_PASSWORD="your-password"
+
+# Pterodactyl API (für App Hosting)
+PTERODACTYL_API_BASE="https://cp.craftingstudiopro.de"
+PTERODACTYL_ADMIN_KEY="ptla_yiASkvPnwaEqvjrZXzjxuttGTpzQlJUxs4UXlhZGGRx"
+PTERODACTYL_USER_KEY="ptlc_mXSIUHyUVp86v3XBF2qyUuQWf6XL085DCK85dZIVgVj"
+PTERODACTYL_LOCATION_ID="2"
+PTERODACTYL_NEST_ID="5"
+# Verfügbare Egg IDs:
+# 15 = Node.JS
+# 16 = Python
+# 19 = Uptime Kuma
+# 20 = Java
+
+# GoDaddy API (Domain-Check, z. B. /domain)
+GODADDY_API_KEY="your-godaddy-api-key"
+GODADDY_API_SECRET="your-godaddy-api-secret"
+# Nutze OTE (Test-Umgebung), wenn deine Keys „OTE“ sind – sonst Fehler „Authenticated user is not allowed access“
+# GODADDY_USE_OTE="true"
+
+# Node Environment
+NODE_ENV="development"
+
